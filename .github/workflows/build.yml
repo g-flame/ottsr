@@ -1,7 +1,10 @@
-name: Build Study Reminder (Optimized)
+name: Build & Release Study Reminder (On Demand, Optimized)
 
 on:
-  workflow_dispatch:   # run manually
+  workflow_dispatch:   # run manually from the Actions tab
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -11,28 +14,60 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build with MSVC (Optimized)
+      - name: Build (MSVC, optimized)
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl study-remainder-ott.c ^
-            /Fe:study-remainder-ott.exe ^
-            /O2 /GL /arch:AVX2 /fp:fast /MD ^
-            user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
+          REM --- find vcvars64.bat (Enterprise / Professional / Community)
+          set "VS_VCVARS=%ProgramFiles%\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          if not exist "%VS_VCVARS%" set "VS_VCVARS=%ProgramFiles%\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvars64.bat"
+          if not exist "%VS_VCVARS%" set "VS_VCVARS=%ProgramFiles%\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
+          if not exist "%VS_VCVARS%" (
+            echo VC++ environment not found at expected locations.
+            exit /b 1
+          )
+          call "%VS_VCVARS%"
 
-      - name: Verify executable
+          echo Compiling study-remainder-ott.c ...
+          cl /nologo /W3 /O2 /GL /Gy /arch:AVX2 /fp:fast /MD study-remainder-ott.c /Fe:study-remainder-ott.exe user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib /link /LTCG
+
+      - name: Verify executable exists
+        shell: cmd
         run: |
           if not exist study-remainder-ott.exe (
-            echo "❌ Build failed: exe not found."
-            exit 1
+            echo ❌ Build failed: study-remainder-ott.exe not found.
+            exit /b 1
           )
+          echo ✅ Build succeeded.
           dir study-remainder-ott.exe
 
-      - name: Upload to Release
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-remainder-ott-exe
+          path: study-remainder-ott.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download build artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: study-remainder-ott-exe
+          path: .
+
+      - name: Create timestamp tag
+        id: make_tag
+        run: |
+          TAG="manual-$(date -u +'%Y%m%dT%H%M%SZ')"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+
+      - name: Create GitHub Release & upload exe
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: manual-build
-          release_name: "Manual Optimized Build"
+          tag_name: ${{ steps.make_tag.outputs.tag }}
+          release_name: "Manual Optimized Build - ${{ steps.make_tag.outputs.tag }}"
           files: study-remainder-ott.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
