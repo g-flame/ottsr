@@ -1,10 +1,9 @@
-name: Build Windows Study Reminder
+name: Build and Release Windows Study Reminder
 
 on:
   push:
-    branches: [ main ]
-  pull_request:
-    branches: [ main ]
+    tags:
+      - "v*"   # runs only when you push a tag like v1.0.0
 
 jobs:
   build:
@@ -14,16 +13,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup MSVC
-        uses: microsoft/setup-msbuild@v2
-
       - name: Build with MSVC
+        shell: cmd
         run: |
-          cl study-remainder-ott.c /Fe:study-remainder-ott.exe ^
-             user32.lib kernel32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
+          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+          cl study-remainder-ott.c /Fe:study-remainder-ott.exe user32.lib kernel32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
 
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
+      - name: Upload release
+        uses: softprops/action-gh-release@v2
         with:
-          name: study-remainder-ott-exe
-          path: study-remainder-ott.exe
+          files: study-remainder-ott.exe
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
