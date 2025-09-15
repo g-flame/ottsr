@@ -1,7 +1,7 @@
-name: Build Windows Study Reminder (On Demand)
+name: Build Study Reminder (Optimized)
 
 on:
-  workflow_dispatch:   # run manually from the Actions tab
+  workflow_dispatch:   # run manually
 
 jobs:
   build:
@@ -11,17 +11,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build with MSVC
+      - name: Build with MSVC (Optimized)
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-          cl study-remainder-ott.c /Fe:study-remainder-ott.exe user32.lib kernel32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
+          cl study-remainder-ott.c ^
+            /Fe:study-remainder-ott.exe ^
+            /O2 /GL /arch:AVX2 /fp:fast /MD ^
+            user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
+
+      - name: Verify executable
+        run: |
+          if not exist study-remainder-ott.exe (
+            echo "❌ Build failed: exe not found."
+            exit 1
+          )
+          dir study-remainder-ott.exe
 
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: manual-build
-          release_name: "Manual Build Release"
+          release_name: "Manual Optimized Build"
           files: study-remainder-ott.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
