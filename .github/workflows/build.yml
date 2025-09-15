@@ -1,9 +1,7 @@
-name: Build and Release Windows Study Reminder
+name: Build Windows Study Reminder (On Demand)
 
 on:
-  push:
-    tags:
-      - "v*"   # runs only when you push a tag like v1.0.0
+  workflow_dispatch:   # run manually from the Actions tab
 
 jobs:
   build:
@@ -19,9 +17,11 @@ jobs:
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cl study-remainder-ott.c /Fe:study-remainder-ott.exe user32.lib kernel32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
 
-      - name: Upload release
+      - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: manual-build
+          release_name: "Manual Build Release"
           files: study-remainder-ott.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
