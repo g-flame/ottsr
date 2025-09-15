@@ -1,0 +1,29 @@
+name: Build Windows Study Reminder
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup MSVC
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build with MSVC
+        run: |
+          cl study-remainder-ott.c /Fe:study-remainder-ott.exe ^
+             user32.lib kernel32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: study-remainder-ott-exe
+          path: study-remainder-ott.exe
