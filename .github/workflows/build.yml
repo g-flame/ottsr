@@ -28,7 +28,7 @@ jobs:
           echo Building Enhanced Study Reminder System...
           cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ^
              /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS ^
-             study_reminder_enhanced.c ^
+             study-remainder-ott.c ^
              /Fe:StudyReminderEnhanced.exe ^
              user32.lib kernel32.lib shell32.lib winmm.lib ^
              opengl32.lib glu32.lib gdi32.lib comctl32.lib ^
@@ -42,7 +42,7 @@ jobs:
           cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ^
              /DWIN32_LEAN_AND_MEAN /D_CRT_SECURE_NO_WARNINGS ^
              /DCONSOLE_MODE ^
-             study_reminder_enhanced.c ^
+             study-remainder-ott.c ^
              /Fe:StudyReminderConsole.exe ^
              user32.lib kernel32.lib shell32.lib winmm.lib ^
              opengl32.lib glu32.lib gdi32.lib comctl32.lib ^
