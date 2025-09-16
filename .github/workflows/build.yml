@@ -3,8 +3,8 @@ name: OTTSR Build & Release
 on:
   push:
     branches:
-      - main       # Auto-build on commits to main
-  workflow_dispatch:
+      - main           # Auto-build on commits to main
+  workflow_dispatch:    # Manual trigger from Actions tab
     inputs:
       major:
         description: 'Major version override'
@@ -23,7 +23,7 @@ permissions:
   contents: write
 
 env:
-  # Default configurable major/minor version
+  # Default major/minor versions (editable)
   VERSION_MAJOR: 0
   VERSION_MINOR: 0
 
@@ -31,7 +31,7 @@ jobs:
   build-and-release:
     runs-on: windows-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Set up MSVC environment
@@ -44,7 +44,7 @@ jobs:
           cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ottsr.c /Fe:ottsr.exe ^
             user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib comctl32.lib psapi.lib /link /LTCG
 
-      - name: Determine next version
+      - name: Determine version
         id: version
         shell: bash
         run: |
@@ -53,7 +53,7 @@ jobs:
           minor="${{ github.event.inputs.minor }}"
           patch="${{ github.event.inputs.patch }}"
 
-          # Get last release if no manual version
+          # If not provided, get last release and increment patch
           if [[ -z "$major" || -z "$minor" || -z "$patch" ]]; then
             last=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || echo "")
             if [[ $last =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
@@ -71,6 +71,7 @@ jobs:
           fi
 
           echo "RELEASE_TAG=${major}.${minor}.${patch}" >> $GITHUB_ENV
+          echo "Determined release: $RELEASE_TAG"
 
       - name: Generate README for release
         shell: bash
