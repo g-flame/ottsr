@@ -1,5 +1,6 @@
 name: OTTSR Build & Release
 
+workflow_dispatch:
 on:
   push:
     branches:
