@@ -1,17 +1,29 @@
 name: OTTSR Build & Release
 
-workflow_dispatch:
 on:
   push:
     branches:
       - main       # Auto-build on commits to main
-  workflow_dispatch: # Optional manual trigger
+  workflow_dispatch:
+    inputs:
+      major:
+        description: 'Major version override'
+        required: false
+        default: ''
+      minor:
+        description: 'Minor version override'
+        required: false
+        default: ''
+      patch:
+        description: 'Patch version override'
+        required: false
+        default: ''
 
 permissions:
   contents: write
 
 env:
-  # Configurable major/minor version
+  # Default configurable major/minor version
   VERSION_MAJOR: 0
   VERSION_MINOR: 0
 
@@ -32,21 +44,32 @@ jobs:
           cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ottsr.c /Fe:ottsr.exe ^
             user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib comctl32.lib psapi.lib /link /LTCG
 
-      - name: Determine next patch version
+      - name: Determine next version
         id: version
         shell: bash
         run: |
-          last=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || echo "")
-          if [[ $last =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-            major=${BASH_REMATCH[1]}
-            minor=${BASH_REMATCH[2]}
-            patch=${BASH_REMATCH[3]}
-            patch=$((patch+1))
-          else
-            major=${{ env.VERSION_MAJOR }}
-            minor=${{ env.VERSION_MINOR }}
-            patch=1
+          # Use manual override if provided
+          major="${{ github.event.inputs.major }}"
+          minor="${{ github.event.inputs.minor }}"
+          patch="${{ github.event.inputs.patch }}"
+
+          # Get last release if no manual version
+          if [[ -z "$major" || -z "$minor" || -z "$patch" ]]; then
+            last=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || echo "")
+            if [[ $last =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+              last_major=${BASH_REMATCH[1]}
+              last_minor=${BASH_REMATCH[2]}
+              last_patch=${BASH_REMATCH[3]}
+              major="${major:-$last_major}"
+              minor="${minor:-$last_minor}"
+              patch="${patch:-$((last_patch+1))}"
+            else
+              major="${major:-${{ env.VERSION_MAJOR }}}"
+              minor="${minor:-${{ env.VERSION_MINOR }}}"
+              patch="${patch:-1}"
+            fi
           fi
+
           echo "RELEASE_TAG=${major}.${minor}.${patch}" >> $GITHUB_ENV
 
       - name: Generate README for release
