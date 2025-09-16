@@ -1,4 +1,4 @@
-name: Build & Release OTTSR
+name: OTTSR
 on:
   workflow_dispatch:
 
@@ -12,18 +12,23 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Build with MSVC
+      - name: Building..
         shell: cmd
         run: |
           call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ottsr.c /Fe:ottsr.exe ^
             user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib comctl32.lib psapi.lib /link /LTCG
 
-      - name: Upload to GitHub Release
+      - name: Generating tag..
+        id: vars
+        run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
+        shell: bash
+
+      - name: Uploading..
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: manual-build
-          release_name: "OTTSR Manual Build"
+          tag_name: ${{ env.tag }}
+          release_name: "OTTSR Build ${{ env.tag }}"
           files: ottsr.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
