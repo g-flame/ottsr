@@ -1,7 +1,5 @@
 #ifndef OTTSR_H
 #define OTTSR_H
-#undef UNICODE
-#undef _UNICODE
 
 #include <windows.h>
 #include <commctrl.h>
