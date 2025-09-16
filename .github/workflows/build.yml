@@ -1,34 +1,83 @@
-name: OTTSR
+name: OTTSR Build & Release
+
 on:
+  push:
+    branches:
+      - main
   workflow_dispatch:
 
 permissions:
   contents: write
 
+env:
+  # Configurable version number (edit manually when major/minor changes needed)
+  VERSION_MAJOR: 0
+  VERSION_MINOR: 0
+  VERSION_PATCH: 0   # Automatically incremented with each release
+
 jobs:
-  build:
+  build-and-release:
     runs-on: windows-latest
     steps:
-      - name: Checkout repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Building..
+      - name: Set up MSVC environment
+        shell: cmd
+        run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+
+      - name: Build OTTSR
         shell: cmd
         run: |
-          call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
           cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ottsr.c /Fe:ottsr.exe ^
             user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib comctl32.lib psapi.lib /link /LTCG
 
-      - name: Generating tag..
-        id: vars
-        run: echo "tag=build-$(date +'%Y%m%d-%H%M%S')" >> $GITHUB_ENV
+      - name: Determine next patch version
+        id: version
         shell: bash
+        run: |
+          # Get last release tag if exists
+          last=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || echo "")
+          if [[ $last =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            major=${BASH_REMATCH[1]}
+            minor=${BASH_REMATCH[2]}
+            patch=${BASH_REMATCH[3]}
+            patch=$((patch+1))
+          else
+            major=${{ env.VERSION_MAJOR }}
+            minor=${{ env.VERSION_MINOR }}
+            patch=1
+          fi
+          echo "RELEASE_TAG=${major}.${minor}.${patch}" >> $GITHUB_ENV
 
-      - name: Uploading..
+      - name: Generate README for release
+        shell: bash
+        run: |
+          cat > README_RELEASE.md <<EOL
+# OTTSR v${{ env.RELEASE_TAG }}
+
+**OTTSR** (Optimized Time-Tracking for Study Routines) release **${{ env.RELEASE_TAG }}**  
+
+This release includes the latest build of OTTSR for Windows. Early development state – UI may be incomplete.
+
+## Features
+- Pomodoro-style study/break cycles
+- Config file support
+- Native Win32 app, dependency-free
+
+## Build
+Built with MSVC on Windows.
+
+## Installation
+Download **ottsr.exe** from this release and run directly.
+
+EOL
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ env.tag }}
-          release_name: "OTTSR Build ${{ env.tag }}"
-          files: ottsr.exe
+          tag_name: ${{ env.RELEASE_TAG }}
+          release_name: "OTTSR v${{ env.RELEASE_TAG }}"
+          files: ottsr.exe,README_RELEASE.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
