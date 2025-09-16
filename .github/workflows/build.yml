@@ -3,17 +3,16 @@ name: OTTSR Build & Release
 on:
   push:
     branches:
-      - main
-  workflow_dispatch:
+      - main       # Auto-build on commits to main
+  workflow_dispatch: # Optional manual trigger
 
 permissions:
   contents: write
 
 env:
-  # Configurable version number (edit manually when major/minor changes needed)
+  # Configurable major/minor version
   VERSION_MAJOR: 0
   VERSION_MINOR: 0
-  VERSION_PATCH: 0   # Automatically incremented with each release
 
 jobs:
   build-and-release:
@@ -36,7 +35,6 @@ jobs:
         id: version
         shell: bash
         run: |
-          # Get last release tag if exists
           last=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || echo "")
           if [[ $last =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
             major=${BASH_REMATCH[1]}
@@ -56,9 +54,9 @@ jobs:
           cat > README_RELEASE.md <<EOL
 # OTTSR v${{ env.RELEASE_TAG }}
 
-**OTTSR** (Optimized Time-Tracking for Study Routines) release **${{ env.RELEASE_TAG }}**  
+**OTTSR** (Optimized Time-Tracking for Study Routines) release **${{ env.RELEASE_TAG }}**
 
-This release includes the latest build of OTTSR for Windows. Early development state – UI may be incomplete.
+Early development version – UI may be incomplete.
 
 ## Features
 - Pomodoro-style study/break cycles
@@ -70,7 +68,6 @@ Built with MSVC on Windows.
 
 ## Installation
 Download **ottsr.exe** from this release and run directly.
-
 EOL
 
       - name: Create GitHub Release
