@@ -17,10 +17,10 @@ permissions:
 jobs:
   build-windows:
     runs-on: windows-latest
-    
+
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Setup MSYS2
       uses: msys2/setup-msys2@v2
       with:
@@ -33,46 +33,18 @@ jobs:
           mingw-w64-x86_64-pkg-config
           mingw-w64-x86_64-gtk3
           mingw-w64-x86_64-json-glib
-          
+
     - name: Build
       shell: msys2 {0}
       run: |
         mkdir build && cd build
         cmake .. -G Ninja -DCMAKE_BUILD_TYPE=Release
         ninja
-        
-    - name: Package
-      shell: msys2 {0}
-      run: |
-        cd build
-        mkdir ottsr-windows
-        cp ottsr.exe ottsr-windows/
-        
-        # Copy required DLLs
-        ldd ottsr.exe | grep mingw64 | awk '{print $3}' | while read dll; do
-          if [ -f "$dll" ]; then
-            cp "$dll" ottsr-windows/
-          fi
-        done
-        
-        # Create batch file
-        cat > ottsr-windows/run.bat << 'EOF'
-        @echo off
-        cd /d "%~dp0"
-        start ottsr.exe
-        EOF
-        
-        7z a ../ottsr-windows.zip ottsr-windows/
-        
-    - name: Upload Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: ottsr-windows
-        path: ottsr-windows.zip
-        
-    - name: Create Release
-      if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
+        cp ottsr.exe ..
+
+    - name: Upload Executable
       uses: softprops/action-gh-release@v2
+      if: github.event_name == 'workflow_dispatch' || startsWith(github.ref, 'refs/tags/v')
       with:
         tag_name: ${{ github.event.inputs.version || github.ref_name }}
         name: Study Timer Pro ${{ github.event.inputs.version || github.ref_name }}
@@ -81,9 +53,7 @@ jobs:
           
           Simple GTK-based study timer for Windows.
           
-          **Download**: `ottsr-windows.zip`
+          **Download**: `ottsr.exe`
           
-          **Installation**: Extract and run `ottsr.exe` or double-click `run.bat`
-          
-          Built with: GTK3, JSON-GLib, GLib
-        files: ottsr-windows.zip
+          **Installation**: Run `ottsr.exe` directly.
+        files: ottsr.exe
