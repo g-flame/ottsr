@@ -6,11 +6,11 @@ on:
       version:
         description: 'Version tag (e.g., v1.0.0)'
         required: true
-        default: 'v1.0.0'
+        default: 'v0.0.2'
       release_notes:
         description: 'Release notes'
         required: false
-        default: 'New release of Over The Top Study Reminder'
+        default: 'ALPHA'
 
 permissions:
   contents: write
@@ -47,10 +47,11 @@ jobs:
         
     - name: Verify builds
       run: |
-        dir build
-        if not exist "build\ottsr.exe" exit 1
-        if not exist "build\ottsr_debug.exe" exit 1
-        echo Builds verified successfully
+        Get-ChildItem build
+        if (!(Test-Path "build\ottsr.exe")) { exit 1 }
+        if (!(Test-Path "build\ottsr_debug.exe")) { exit 1 }
+        Write-Host "Builds verified successfully"
+      shell: powershell
         
     - name: Create portable package
       run: |
