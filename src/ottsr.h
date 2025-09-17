@@ -20,7 +20,7 @@
 #define OTTSR_WINDOW_WIDTH 480
 #define OTTSR_WINDOW_HEIGHT 720
 
-// CSS for modern styling
+// CSS for modern styling (removed problematic transform property)
 #define OTTSR_CSS_STYLE \
 "window { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }" \
 ".main-container { background: rgba(255, 255, 255, 0.95); border-radius: 20px; " \
@@ -33,11 +33,11 @@
 ".control-button { padding: 12px 24px; border-radius: 25px; font-weight: 600; " \
 "                  font-size: 14px; transition: all 0.3s ease; }" \
 ".start-button { background: linear-gradient(45deg, #27ae60, #2ecc71); color: white; border: none; }" \
-".start-button:hover { background: linear-gradient(45deg, #229954, #27ae60); transform: translateY(-2px); }" \
+".start-button:hover { background: linear-gradient(45deg, #229954, #27ae60); }" \
 ".pause-button { background: linear-gradient(45deg, #f39c12, #e67e22); color: white; border: none; }" \
-".pause-button:hover { background: linear-gradient(45deg, #e67e22, #d35400); transform: translateY(-2px); }" \
+".pause-button:hover { background: linear-gradient(45deg, #e67e22, #d35400); }" \
 ".stop-button { background: linear-gradient(45deg, #e74c3c, #c0392b); color: white; border: none; }" \
-".stop-button:hover { background: linear-gradient(45deg, #c0392b, #a93226); transform: translateY(-2px); }" \
+".stop-button:hover { background: linear-gradient(45deg, #c0392b, #a93226); }" \
 ".progress-bar { border-radius: 10px; }" \
 ".progress-bar progress { background: linear-gradient(90deg, #667eea, #764ba2); }" \
 ".settings-entry { padding: 8px 12px; border-radius: 6px; margin: 5px 0; }"
@@ -93,6 +93,8 @@ typedef struct {
     int current_sessions;
     char current_subject[OTTSR_MAX_NAME_LEN];
     int profile_index;
+    time_t pause_duration;
+    gboolean is_long_break;
 } ottsr_session_t;
 
 typedef struct {
