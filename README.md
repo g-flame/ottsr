@@ -1,4 +1,4 @@
-# Study Timer Pro (OTTSR) 🎯
+# Over The Top Study Remainder
 
 A modern, cross-platform study timer application with customizable profiles, desktop notifications, and comprehensive session tracking. Built with GTK3 for a native look and feel across Linux, Windows, and macOS.
 
