@@ -1,21 +1,21 @@
 #include "ottsr.h"
 
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "kernel32.lib")
-#pragma comment(lib, "winmm.lib")
-
 static ottsr_app_t g_app = {0};
+
+// Forward declarations for dialog templates
+BOOL CALLBACK CreateSettingsDialog(HWND parent, ottsr_app_t* app);
+BOOL CALLBACK CreateProfilesDialog(HWND parent, ottsr_app_t* app);
 
 void ottsr_init_app(ottsr_app_t* app) {
     memset(app, 0, sizeof(ottsr_app_t));
     app->session.state = OTTSR_STATE_IDLE;
     app->session.profile_index = 0;
     app->config.theme = OTTSR_THEME_LIGHT;
-    app->config.sound_volume = 50;
+    app->config.sound_volume = 70;
     app->config.minimize_to_tray = 1;
     app->config.autostart_sessions = 0;
+    app->config.window_x = CW_USEDEFAULT;
+    app->config.window_y = CW_USEDEFAULT;
     
     // Create default profile
     strcpy_s(app->config.profiles[0].name, sizeof(app->config.profiles[0].name), "Default");
@@ -39,7 +39,6 @@ void ottsr_cleanup_app(ottsr_app_t* app) {
     if (app->bg_brush) DeleteObject(app->bg_brush);
     if (app->card_brush) DeleteObject(app->card_brush);
     if (app->primary_brush) DeleteObject(app->primary_brush);
-    if (app->border_pen) DeleteObject(app->border_pen);
 }
 
 void ottsr_load_config(ottsr_app_t* app) {
@@ -49,10 +48,8 @@ void ottsr_load_config(ottsr_app_t* app) {
     }
     
     char line[512];
-    ottsr_profile_t* current_profile = NULL;
-    
     while (fgets(line, sizeof(line), file)) {
-        line[strcspn(line, "\r\n")] = 0; // Remove newlines
+        line[strcspn(line, "\r\n")] = 0;
         
         if (line[0] == '#' || strlen(line) == 0) continue;
         
@@ -70,32 +67,38 @@ void ottsr_load_config(ottsr_app_t* app) {
                 app->config.profile_count = min(atoi(value), OTTSR_MAX_PROFILES);
             } else if (strcmp(key, "active_profile") == 0) {
                 app->config.active_profile = min(atoi(value), app->config.profile_count - 1);
+            } else if (strcmp(key, "window_x") == 0) {
+                app->config.window_x = atoi(value);
+            } else if (strcmp(key, "window_y") == 0) {
+                app->config.window_y = atoi(value);
+            } else if (strcmp(key, "last_subject") == 0) {
+                strcpy_s(app->config.last_subject, sizeof(app->config.last_subject), value);
             } else if (strncmp(key, "profile_", 8) == 0) {
                 int profile_idx = atoi(key + 8);
                 if (profile_idx < OTTSR_MAX_PROFILES) {
-                    current_profile = &app->config.profiles[profile_idx];
                     char* field = strchr(key + 8, '_');
                     if (field++) {
+                        ottsr_profile_t* p = &app->config.profiles[profile_idx];
                         if (strcmp(field, "name") == 0) {
-                            strcpy_s(current_profile->name, sizeof(current_profile->name), value);
+                            strcpy_s(p->name, sizeof(p->name), value);
                         } else if (strcmp(field, "study_minutes") == 0) {
-                            current_profile->study_minutes = atoi(value);
+                            p->study_minutes = atoi(value);
                         } else if (strcmp(field, "break_minutes") == 0) {
-                            current_profile->break_minutes = atoi(value);
+                            p->break_minutes = atoi(value);
                         } else if (strcmp(field, "long_break_minutes") == 0) {
-                            current_profile->long_break_minutes = atoi(value);
+                            p->long_break_minutes = atoi(value);
                         } else if (strcmp(field, "sessions_until_long_break") == 0) {
-                            current_profile->sessions_until_long_break = atoi(value);
+                            p->sessions_until_long_break = atoi(value);
                         } else if (strcmp(field, "sound_enabled") == 0) {
-                            current_profile->sound_enabled = atoi(value);
+                            p->sound_enabled = atoi(value);
                         } else if (strcmp(field, "notifications_enabled") == 0) {
-                            current_profile->notifications_enabled = atoi(value);
+                            p->notifications_enabled = atoi(value);
                         } else if (strcmp(field, "total_study_time") == 0) {
-                            current_profile->total_study_time = (time_t)_atoi64(value);
+                            p->total_study_time = (time_t)_atoi64(value);
                         } else if (strcmp(field, "total_sessions") == 0) {
-                            current_profile->total_sessions = atoi(value);
+                            p->total_sessions = atoi(value);
                         } else if (strcmp(field, "completed_sessions") == 0) {
-                            current_profile->completed_sessions = atoi(value);
+                            p->completed_sessions = atoi(value);
                         }
                     }
                 }
@@ -107,13 +110,26 @@ void ottsr_load_config(ottsr_app_t* app) {
 }
 
 void ottsr_save_config(ottsr_app_t* app) {
+    // Save window position
+    if (app->main_window) {
+        RECT rect;
+        GetWindowRect(app->main_window, &rect);
+        app->config.window_x = rect.left;
+        app->config.window_y = rect.top;
+    }
+    
+    // Save current subject
+    if (app->subject_edit) {
+        GetWindowTextA(app->subject_edit, app->config.last_subject, OTTSR_MAX_NAME_LEN);
+    }
+    
     FILE* file;
     if (fopen_s(&file, OTTSR_CONFIG_FILE, "w") != 0) {
         return;
     }
     
     fprintf(file, "# Over The Top Study Reminder Configuration\n");
-    fprintf(file, "# Generated automatically - edit carefully\n\n");
+    fprintf(file, "# Version: %s\n\n", OTTSR_VERSION);
     
     fprintf(file, "theme=%d\n", app->config.theme);
     fprintf(file, "minimize_to_tray=%d\n", app->config.minimize_to_tray);
@@ -121,6 +137,9 @@ void ottsr_save_config(ottsr_app_t* app) {
     fprintf(file, "sound_volume=%d\n", app->config.sound_volume);
     fprintf(file, "profile_count=%d\n", app->config.profile_count);
     fprintf(file, "active_profile=%d\n", app->config.active_profile);
+    fprintf(file, "window_x=%d\n", app->config.window_x);
+    fprintf(file, "window_y=%d\n", app->config.window_y);
+    fprintf(file, "last_subject=%s\n", app->config.last_subject);
     
     for (int i = 0; i < app->config.profile_count; i++) {
         ottsr_profile_t* p = &app->config.profiles[i];
@@ -139,133 +158,128 @@ void ottsr_save_config(ottsr_app_t* app) {
     fclose(file);
 }
 
-void ottsr_create_ui_resources(ottsr_app_t* app) {
-    app->title_font = CreateFont(18, 0, 0, 0, FW_SEMIBOLD, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    
-    app->normal_font = CreateFont(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, L"Segoe UI");
-    
-    app->mono_font = CreateFont(16, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
-        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, L"Consolas");
-    
-    ottsr_update_ui_theme(app);
-}
-
-void ottsr_update_ui_theme(ottsr_app_t* app) {
-    SYSTEMTIME st;
-    GetLocalTime(&st);
-    
-    app->is_dark_theme = (app->config.theme == OTTSR_THEME_DARK) ||
-        (app->config.theme == OTTSR_THEME_AUTO && (st.wHour < 6 || st.wHour > 18));
-    
-    if (app->bg_brush) DeleteObject(app->bg_brush);
-    if (app->card_brush) DeleteObject(app->card_brush);
-    if (app->primary_brush) DeleteObject(app->primary_brush);
-    if (app->border_pen) DeleteObject(app->border_pen);
-    
-    app->bg_brush = CreateSolidBrush(app->is_dark_theme ? OTTSR_COLOR_BG_DARK : OTTSR_COLOR_BG_LIGHT);
-    app->card_brush = CreateSolidBrush(app->is_dark_theme ? OTTSR_COLOR_CARD_DARK : OTTSR_COLOR_CARD_LIGHT);
-    app->primary_brush = CreateSolidBrush(OTTSR_COLOR_PRIMARY);
-    app->border_pen = CreatePen(PS_SOLID, 1, app->is_dark_theme ? RGB(75, 85, 99) : RGB(209, 213, 219));
-}
-
 void ottsr_create_main_window(ottsr_app_t* app, HINSTANCE hInstance) {
-    WNDCLASS wc = {0};
+    // Create UI resources
+    app->title_font = CreateFontA(20, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    
+    app->normal_font = CreateFontA(14, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_SWISS, "Segoe UI");
+    
+    app->mono_font = CreateFontA(28, 0, 0, 0, FW_BOLD, FALSE, FALSE, FALSE,
+        DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+        CLEARTYPE_QUALITY, FIXED_PITCH | FF_MODERN, "Consolas");
+    
+    app->bg_brush = CreateSolidBrush(COLOR_BG_LIGHT);
+    app->card_brush = CreateSolidBrush(COLOR_CARD_LIGHT);
+    app->primary_brush = CreateSolidBrush(COLOR_PRIMARY);
+    
+    // Register window class
+    WNDCLASSA wc = {0};
     wc.lpfnWndProc = ottsr_main_wndproc;
     wc.hInstance = hInstance;
-    wc.lpszClassName = L"OTTSRMainWindow";
+    wc.lpszClassName = "OTTSRMainWindow";
     wc.hCursor = LoadCursor(NULL, IDC_ARROW);
     wc.hbrBackground = app->bg_brush;
     wc.hIcon = LoadIcon(NULL, IDI_APPLICATION);
-    RegisterClass(&wc);
+    wc.style = CS_HREDRAW | CS_VREDRAW;
+    RegisterClassA(&wc);
     
-    app->main_window = CreateWindow(L"OTTSRMainWindow",
-        L"Over The Top Study Reminder " OTTSR_VERSION,
-        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
-        CW_USEDEFAULT, CW_USEDEFAULT, 480, 520,
+    // Create main window
+    app->main_window = CreateWindowA("OTTSRMainWindow",
+        "Over The Top Study Reminder v" OTTSR_VERSION,
+        WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX & ~WS_THICKFRAME,
+        app->config.window_x, app->config.window_y, 520, 600,
         NULL, NULL, hInstance, app);
     
-    // Create controls
-    CreateWindow(L"STATIC", L"Profile:", WS_VISIBLE | WS_CHILD,
-        20, 20, 60, 25, app->main_window, NULL, hInstance, NULL);
+    // Profile section
+    CreateWindowA("STATIC", "Study Profile:", WS_VISIBLE | WS_CHILD,
+        20, 20, 100, 20, app->main_window, NULL, hInstance, NULL);
     
-    app->profile_combo = CreateWindow(L"COMBOBOX", NULL,
+    app->profile_combo = CreateWindowA("COMBOBOX", NULL,
         WS_VISIBLE | WS_CHILD | CBS_DROPDOWNLIST | WS_VSCROLL,
-        90, 18, 200, 200, app->main_window, (HMENU)IDC_PROFILE_COMBO, hInstance, NULL);
+        20, 45, 200, 200, app->main_window, (HMENU)IDC_PROFILE_COMBO, hInstance, NULL);
     
-    CreateWindow(L"STATIC", L"Subject:", WS_VISIBLE | WS_CHILD,
-        20, 55, 60, 25, app->main_window, NULL, hInstance, NULL);
+    CreateWindowA("BUTTON", "Manage Profiles",
+        WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
+        240, 45, 120, 25, app->main_window, (HMENU)IDC_PROFILES_BTN, hInstance, NULL);
     
-    app->subject_edit = CreateWindow(L"EDIT", NULL,
+    // Subject section
+    CreateWindowA("STATIC", "Current Subject:", WS_VISIBLE | WS_CHILD,
+        20, 85, 100, 20, app->main_window, NULL, hInstance, NULL);
+    
+    app->subject_edit = CreateWindowA("EDIT", app->config.last_subject,
         WS_VISIBLE | WS_CHILD | WS_BORDER | ES_AUTOHSCROLL,
-        90, 53, 300, 25, app->main_window, (HMENU)IDC_SUBJECT_EDIT, hInstance, NULL);
+        20, 105, 340, 25, app->main_window, (HMENU)IDC_SUBJECT_EDIT, hInstance, NULL);
     
-    CreateWindow(L"STATIC", L"Study Time (min):", WS_VISIBLE | WS_CHILD,
-        20, 90, 120, 25, app->main_window, NULL, hInstance, NULL);
+    // Time settings
+    CreateWindowA("STATIC", "Study Time (minutes):", WS_VISIBLE | WS_CHILD,
+        20, 145, 140, 20, app->main_window, NULL, hInstance, NULL);
     
-    app->study_time_edit = CreateWindow(L"EDIT", NULL,
+    app->study_time_edit = CreateWindowA("EDIT", "25",
         WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER,
-        150, 88, 60, 25, app->main_window, (HMENU)IDC_STUDY_TIME_EDIT, hInstance, NULL);
+        20, 165, 60, 25, app->main_window, (HMENU)IDC_STUDY_TIME_EDIT, hInstance, NULL);
     
-    CreateWindow(L"STATIC", L"Break Time (min):", WS_VISIBLE | WS_CHILD,
-        230, 90, 120, 25, app->main_window, NULL, hInstance, NULL);
+    CreateWindowA("STATIC", "Break Time (minutes):", WS_VISIBLE | WS_CHILD,
+        100, 145, 140, 20, app->main_window, NULL, hInstance, NULL);
     
-    app->break_time_edit = CreateWindow(L"EDIT", NULL,
+    app->break_time_edit = CreateWindowA("EDIT", "5",
         WS_VISIBLE | WS_CHILD | WS_BORDER | ES_NUMBER,
-        360, 88, 60, 25, app->main_window, (HMENU)IDC_BREAK_TIME_EDIT, hInstance, NULL);
+        100, 165, 60, 25, app->main_window, (HMENU)IDC_BREAK_TIME_EDIT, hInstance, NULL);
     
     // Session controls
-    app->start_btn = CreateWindow(L"BUTTON", L"Start Session",
+    app->start_btn = CreateWindowA("BUTTON", "Start Session",
+        WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON | BS_DEFPUSHBUTTON,
+        20, 210, 100, 40, app->main_window, (HMENU)IDC_START_BTN, hInstance, NULL);
+    
+    app->pause_btn = CreateWindowA("BUTTON", "Pause",
         WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-        20, 130, 100, 35, app->main_window, (HMENU)IDC_START_BTN, hInstance, NULL);
+        130, 210, 80, 40, app->main_window, (HMENU)IDC_PAUSE_BTN, hInstance, NULL);
     
-    app->pause_btn = CreateWindow(L"BUTTON", L"Pause",
+    app->stop_btn = CreateWindowA("BUTTON", "Stop",
         WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-        130, 130, 100, 35, app->main_window, (HMENU)IDC_PAUSE_BTN, hInstance, NULL);
+        220, 210, 80, 40, app->main_window, (HMENU)IDC_STOP_BTN, hInstance, NULL);
     
-    app->stop_btn = CreateWindow(L"BUTTON", L"Stop",
-        WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-        240, 130, 100, 35, app->main_window, (HMENU)IDC_STOP_BTN, hInstance, NULL);
-    
-    // Progress and status
-    CreateWindow(L"STATIC", L"Session Progress:", WS_VISIBLE | WS_CHILD,
-        20, 185, 120, 20, app->main_window, NULL, hInstance, NULL);
-    
-    app->session_progress = CreateWindow(PROGRESS_CLASS, NULL,
-        WS_VISIBLE | WS_CHILD | PBS_SMOOTH,
-        20, 205, 420, 20, app->main_window, (HMENU)IDC_SESSION_PROGRESS, hInstance, NULL);
-    
-    CreateWindow(L"STATIC", L"Break Progress:", WS_VISIBLE | WS_CHILD,
-        20, 235, 120, 20, app->main_window, NULL, hInstance, NULL);
-    
-    app->break_progress = CreateWindow(PROGRESS_CLASS, NULL,
-        WS_VISIBLE | WS_CHILD | PBS_SMOOTH,
-        20, 255, 420, 20, app->main_window, (HMENU)IDC_BREAK_PROGRESS, hInstance, NULL);
-    
-    app->time_display = CreateWindow(L"STATIC", L"00:00",
+    // Timer display
+    app->time_display = CreateWindowA("STATIC", "25:00",
         WS_VISIBLE | WS_CHILD | SS_CENTER,
-        20, 295, 420, 60, app->main_window, (HMENU)IDC_TIME_DISPLAY, hInstance, NULL);
+        20, 270, 460, 80, app->main_window, (HMENU)IDC_TIME_DISPLAY, hInstance, NULL);
     
-    app->status_display = CreateWindow(L"STATIC", L"Ready to study",
+    // Status display
+    app->status_display = CreateWindowA("STATIC", "Ready to start studying",
         WS_VISIBLE | WS_CHILD | SS_CENTER,
-        20, 365, 420, 25, app->main_window, (HMENU)IDC_STATUS_DISPLAY, hInstance, NULL);
+        20, 360, 460, 25, app->main_window, (HMENU)IDC_STATUS_DISPLAY, hInstance, NULL);
+    
+    // Progress bars
+    CreateWindowA("STATIC", "Session Progress:", WS_VISIBLE | WS_CHILD,
+        20, 400, 120, 20, app->main_window, NULL, hInstance, NULL);
+    
+    app->session_progress = CreateWindowA(PROGRESS_CLASSA, NULL,
+        WS_VISIBLE | WS_CHILD | PBS_SMOOTH,
+        20, 420, 460, 15, app->main_window, (HMENU)IDC_SESSION_PROGRESS, hInstance, NULL);
+    
+    CreateWindowA("STATIC", "Break Progress:", WS_VISIBLE | WS_CHILD,
+        20, 450, 120, 20, app->main_window, NULL, hInstance, NULL);
+    
+    app->break_progress = CreateWindowA(PROGRESS_CLASSA, NULL,
+        WS_VISIBLE | WS_CHILD | PBS_SMOOTH,
+        20, 470, 460, 15, app->main_window, (HMENU)IDC_BREAK_PROGRESS, hInstance, NULL);
     
     // Bottom buttons
-    CreateWindow(L"BUTTON", L"Settings",
+    CreateWindowA("BUTTON", "Settings",
         WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-        20, 410, 80, 30, app->main_window, (HMENU)IDC_SETTINGS_BTN, hInstance, NULL);
+        20, 510, 80, 30, app->main_window, (HMENU)IDC_SETTINGS_BTN, hInstance, NULL);
     
-    CreateWindow(L"BUTTON", L"Profiles",
+    CreateWindowA("BUTTON", "About",
         WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-        110, 410, 80, 30, app->main_window, (HMENU)IDC_PROFILES_BTN, hInstance, NULL);
+        400, 510, 80, 30, app->main_window, (HMENU)IDC_ABOUT_BTN, hInstance, NULL);
     
-    CreateWindow(L"BUTTON", L"About",
-        WS_VISIBLE | WS_CHILD | BS_PUSHBUTTON,
-        360, 410, 80, 30, app->main_window, (HMENU)IDC_ABOUT_BTN, hInstance, NULL);
+    // Set fonts
+    SendMessage(app->time_display, WM_SETFONT, (WPARAM)app->mono_font, TRUE);
+    SendMessage(app->profile_combo, WM_SETFONT, (WPARAM)app->normal_font, TRUE);
+    SendMessage(app->subject_edit, WM_SETFONT, (WPARAM)app->normal_font, TRUE);
     
     // Initialize UI state
     EnableWindow(app->pause_btn, FALSE);
@@ -273,12 +287,9 @@ void ottsr_create_main_window(ottsr_app_t* app, HINSTANCE hInstance) {
     
     // Populate profile combo
     for (int i = 0; i < app->config.profile_count; i++) {
-        SendMessage(app->profile_combo, CB_ADDSTRING, 0, (LPARAM)app->config.profiles[i].name);
+        SendMessageA(app->profile_combo, CB_ADDSTRING, 0, (LPARAM)app->config.profiles[i].name);
     }
     SendMessage(app->profile_combo, CB_SETCURSEL, app->config.active_profile, 0);
-    
-    // Set fonts
-    SendMessage(app->time_display, WM_SETFONT, (WPARAM)app->mono_font, TRUE);
     
     ottsr_update_display(app);
 }
@@ -286,7 +297,6 @@ void ottsr_create_main_window(ottsr_app_t* app, HINSTANCE hInstance) {
 void ottsr_start_session(ottsr_app_t* app) {
     if (app->session.state != OTTSR_STATE_IDLE) return;
     
-    // Get current profile
     int profile_idx = (int)SendMessage(app->profile_combo, CB_GETCURSEL, 0, 0);
     if (profile_idx == CB_ERR) profile_idx = 0;
     
@@ -295,22 +305,19 @@ void ottsr_start_session(ottsr_app_t* app) {
     app->session.session_start = time(NULL);
     app->session.elapsed_study_seconds = 0;
     app->session.elapsed_break_seconds = 0;
+    app->session.current_sessions = 0;
     
-    // Get subject
-    GetWindowText(app->subject_edit, app->session.current_subject, OTTSR_MAX_NAME_LEN);
+    GetWindowTextA(app->subject_edit, app->session.current_subject, OTTSR_MAX_NAME_LEN);
     
-    // Update profile stats
     app->config.profiles[profile_idx].total_sessions++;
     
-    // Start timer
     SetTimer(app->main_window, TIMER_SESSION, 1000, NULL);
     SetTimer(app->main_window, TIMER_UI_UPDATE, 100, NULL);
     
-    // Update UI
     EnableWindow(app->start_btn, FALSE);
     EnableWindow(app->pause_btn, TRUE);
     EnableWindow(app->stop_btn, TRUE);
-    SetWindowText(app->status_display, L"Studying...");
+    SetWindowTextA(app->status_display, "Studying...");
     
     ottsr_update_display(app);
 }
@@ -322,7 +329,6 @@ void ottsr_stop_session(ottsr_app_t* app) {
     KillTimer(app->main_window, TIMER_BREAK);
     KillTimer(app->main_window, TIMER_UI_UPDATE);
     
-    // Update profile stats
     ottsr_profile_t* profile = &app->config.profiles[app->session.profile_index];
     profile->total_study_time += app->session.elapsed_study_seconds;
     
@@ -331,15 +337,14 @@ void ottsr_stop_session(ottsr_app_t* app) {
         profile->completed_sessions++;
     }
     
-    // Reset session
     app->session.state = OTTSR_STATE_IDLE;
     app->session.current_sessions = 0;
     
-    // Update UI
     EnableWindow(app->start_btn, TRUE);
     EnableWindow(app->pause_btn, FALSE);
     EnableWindow(app->stop_btn, FALSE);
-    SetWindowText(app->status_display, L"Session completed");
+    SetWindowTextA(app->pause_btn, "Pause");
+    SetWindowTextA(app->status_display, "Session completed");
     
     SendMessage(app->session_progress, PBM_SETPOS, 0, 0);
     SendMessage(app->break_progress, PBM_SETPOS, 0, 0);
@@ -352,32 +357,31 @@ void ottsr_pause_session(ottsr_app_t* app) {
     if (app->session.state == OTTSR_STATE_IDLE) return;
     
     if (app->session.state == OTTSR_STATE_PAUSED) {
-        // Resume
         time_t pause_duration = time(NULL) - app->session.pause_start;
         app->session.session_start += pause_duration;
         if (app->session.break_start > 0) {
             app->session.break_start += pause_duration;
         }
         
-        if (app->session.state == OTTSR_STATE_STUDYING) {
-            SetTimer(app->main_window, TIMER_SESSION, 1000, NULL);
-        } else {
+        if (app->session.break_start > 0) {
+            app->session.state = OTTSR_STATE_BREAKING;
             SetTimer(app->main_window, TIMER_BREAK, 1000, NULL);
+            SetWindowTextA(app->status_display, "Break time...");
+        } else {
+            app->session.state = OTTSR_STATE_STUDYING;
+            SetTimer(app->main_window, TIMER_SESSION, 1000, NULL);
+            SetWindowTextA(app->status_display, "Studying...");
         }
         
-        app->session.state = (app->session.break_start > 0) ? OTTSR_STATE_BREAKING : OTTSR_STATE_STUDYING;
-        SetWindowText(app->pause_btn, L"Pause");
-        SetWindowText(app->status_display, 
-            (app->session.state == OTTSR_STATE_STUDYING) ? L"Studying..." : L"Break time...");
+        SetWindowTextA(app->pause_btn, "Pause");
     } else {
-        // Pause
         KillTimer(app->main_window, TIMER_SESSION);
         KillTimer(app->main_window, TIMER_BREAK);
         
         app->session.pause_start = time(NULL);
         app->session.state = OTTSR_STATE_PAUSED;
-        SetWindowText(app->pause_btn, L"Resume");
-        SetWindowText(app->status_display, L"Paused");
+        SetWindowTextA(app->pause_btn, "Resume");
+        SetWindowTextA(app->status_display, "Paused");
     }
     
     ottsr_update_display(app);
@@ -386,11 +390,10 @@ void ottsr_pause_session(ottsr_app_t* app) {
 void ottsr_update_display(ottsr_app_t* app) {
     ottsr_profile_t* profile = &app->config.profiles[app->session.profile_index];
     
-    // Update time display
     char time_str[32];
     int display_seconds = 0;
     
-    if (app->session.state == OTTSR_STATE_STUDYING) {
+    if (app->session.state == OTTSR_STATE_STUDYING || app->session.state == OTTSR_STATE_PAUSED) {
         display_seconds = (profile->study_minutes * 60) - app->session.elapsed_study_seconds;
         int progress = (app->session.elapsed_study_seconds * 100) / (profile->study_minutes * 60);
         SendMessage(app->session_progress, PBM_SETPOS, max(0, min(100, progress)), 0);
@@ -401,6 +404,7 @@ void ottsr_update_display(ottsr_app_t* app) {
         display_seconds = (break_minutes * 60) - app->session.elapsed_break_seconds;
         int progress = (app->session.elapsed_break_seconds * 100) / (break_minutes * 60);
         SendMessage(app->break_progress, PBM_SETPOS, max(0, min(100, progress)), 0);
+        SendMessage(app->session_progress, PBM_SETPOS, 100, 0);
     } else {
         display_seconds = profile->study_minutes * 60;
         SendMessage(app->session_progress, PBM_SETPOS, 0, 0);
@@ -410,13 +414,15 @@ void ottsr_update_display(ottsr_app_t* app) {
     ottsr_format_time(max(0, display_seconds), time_str, sizeof(time_str));
     SetWindowTextA(app->time_display, time_str);
     
-    // Update profile-specific controls
-    char buffer[16];
-    sprintf_s(buffer, sizeof(buffer), "%d", profile->study_minutes);
-    SetWindowTextA(app->study_time_edit, buffer);
-    
-    sprintf_s(buffer, sizeof(buffer), "%d", profile->break_minutes);
-    SetWindowTextA(app->break_time_edit, buffer);
+    // Update time input fields
+    if (app->session.state == OTTSR_STATE_IDLE) {
+        char buffer[16];
+        sprintf_s(buffer, sizeof(buffer), "%d", profile->study_minutes);
+        SetWindowTextA(app->study_time_edit, buffer);
+        
+        sprintf_s(buffer, sizeof(buffer), "%d", profile->break_minutes);
+        SetWindowTextA(app->break_time_edit, buffer);
+    }
 }
 
 void ottsr_handle_timer(ottsr_app_t* app, WPARAM timer_id) {
@@ -427,7 +433,6 @@ void ottsr_handle_timer(ottsr_app_t* app, WPARAM timer_id) {
         app->session.elapsed_study_seconds++;
         
         if (app->session.elapsed_study_seconds >= profile->study_minutes * 60) {
-            // Study session complete, start break
             KillTimer(app->main_window, TIMER_SESSION);
             app->session.current_sessions++;
             app->session.state = OTTSR_STATE_BREAKING;
@@ -435,14 +440,14 @@ void ottsr_handle_timer(ottsr_app_t* app, WPARAM timer_id) {
             app->session.elapsed_break_seconds = 0;
             
             SetTimer(app->main_window, TIMER_BREAK, 1000, NULL);
-            SetWindowText(app->status_display, L"Break time!");
+            SetWindowTextA(app->status_display, "Break time!");
             
             if (profile->notifications_enabled) {
                 int break_minutes = (app->session.current_sessions % profile->sessions_until_long_break == 0) ?
                     profile->long_break_minutes : profile->break_minutes;
                 char msg[256];
                 sprintf_s(msg, sizeof(msg), "Study session complete! Take a %d minute break.", break_minutes);
-                ottsr_show_notification("Study Complete", msg);
+                MessageBoxA(app->main_window, msg, "Study Complete", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
             }
             
             if (profile->sound_enabled) {
@@ -458,27 +463,28 @@ void ottsr_handle_timer(ottsr_app_t* app, WPARAM timer_id) {
             profile->long_break_minutes : profile->break_minutes;
             
         if (app->session.elapsed_break_seconds >= break_minutes * 60) {
-            // Break complete
             KillTimer(app->main_window, TIMER_BREAK);
             
             if (app->config.autostart_sessions) {
-                // Auto-start next session
                 app->session.state = OTTSR_STATE_STUDYING;
                 app->session.session_start = time(NULL);
                 app->session.elapsed_study_seconds = 0;
+                app->session.break_start = 0;
                 SetTimer(app->main_window, TIMER_SESSION, 1000, NULL);
-                SetWindowText(app->status_display, L"Studying...");
+                SetWindowTextA(app->status_display, "Next session started automatically");
             } else {
-                // Wait for manual start
                 app->session.state = OTTSR_STATE_IDLE;
+                app->session.break_start = 0;
                 EnableWindow(app->start_btn, TRUE);
                 EnableWindow(app->pause_btn, FALSE);
                 EnableWindow(app->stop_btn, FALSE);
-                SetWindowText(app->status_display, L"Break complete - ready for next session");
+                SetWindowTextA(app->pause_btn, "Pause");
+                SetWindowTextA(app->status_display, "Break complete - ready for next session");
             }
             
             if (profile->notifications_enabled) {
-                ottsr_show_notification("Break Complete", "Ready for the next study session!");
+                MessageBoxA(app->main_window, "Break complete! Ready for the next study session.", 
+                          "Break Complete", MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
             }
             
             if (profile->sound_enabled) {
@@ -500,15 +506,10 @@ void ottsr_format_time(int seconds, char* buffer, size_t buffer_size) {
 }
 
 void ottsr_play_notification_sound(ottsr_app_t* app) {
-    int volume = app->config.sound_volume;
     for (int i = 0; i < 3; i++) {
         Beep(800 + (i * 200), 200);
         Sleep(100);
     }
-}
-
-void ottsr_show_notification(const char* title, const char* message) {
-    MessageBoxA(NULL, message, title, MB_OK | MB_ICONINFORMATION | MB_TOPMOST);
 }
 
 LRESULT CALLBACK ottsr_main_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
@@ -575,6 +576,7 @@ LRESULT CALLBACK ottsr_main_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
                         profile->break_minutes = value;
                     }
                 }
+                ottsr_update_display(app);
             }
             break;
         }
@@ -584,34 +586,11 @@ LRESULT CALLBACK ottsr_main_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM l
         ottsr_handle_timer(app, wParam);
         return 0;
         
-    case WM_CTLCOLORSTATIC:
-    case WM_CTLCOLOREDIT:
-        if (app && app->is_dark_theme) {
-            HDC hdc = (HDC)wParam;
-            SetTextColor(hdc, OTTSR_COLOR_TEXT_DARK);
-            SetBkColor(hdc, app->is_dark_theme ? OTTSR_COLOR_CARD_DARK : OTTSR_COLOR_CARD_LIGHT);
-            return (LRESULT)(app->is_dark_theme ? app->card_brush : app->bg_brush);
-        }
-        break;
-        
-    case WM_PAINT:
-        {
-            PAINTSTRUCT ps;
-            HDC hdc = BeginPaint(hwnd, &ps);
-            
-            if (app) {
-                FillRect(hdc, &ps.rcPaint, app->bg_brush);
-            }
-            
-            EndPaint(hwnd, &ps);
-            return 0;
-        }
-        
     case WM_CLOSE:
         if (app->session.state != OTTSR_STATE_IDLE) {
-            int result = MessageBox(hwnd, 
-                L"A study session is active. Do you want to save and exit?",
-                L"Confirm Exit", MB_YESNOCANCEL | MB_ICONQUESTION);
+            int result = MessageBoxA(hwnd, 
+                "A study session is active. Do you want to save and exit?",
+                "Confirm Exit", MB_YESNOCANCEL | MB_ICONQUESTION);
             
             if (result == IDYES) {
                 ottsr_stop_session(app);
@@ -640,7 +619,8 @@ void ottsr_show_settings_dialog(ottsr_app_t* app) {
         "Sound Volume: %d%%\n"
         "Minimize to Tray: %s\n"
         "Auto-start Sessions: %s\n\n"
-        "Edit %s to modify advanced settings.",
+        "To modify settings, edit the %s file manually.\n"
+        "Advanced settings dialog coming in future updates.",
         (app->config.theme == OTTSR_THEME_LIGHT) ? "Light" : 
         (app->config.theme == OTTSR_THEME_DARK) ? "Dark" : "Auto",
         app->config.sound_volume,
@@ -663,17 +643,23 @@ void ottsr_show_profiles_dialog(ottsr_app_t* app) {
         
         sprintf_s(profile_info, sizeof(profile_info),
             "%s%s:\n"
-            "  Study: %dm, Break: %dm, Long Break: %dm\n"
-            "  Total Time: %dh %dm\n"
-            "  Sessions: %d completed / %d total\n\n",
+            "  Study: %d min, Break: %d min, Long Break: %d min\n"
+            "  Sessions until long break: %d\n"
+            "  Total study time: %dh %dm\n"
+            "  Completed sessions: %d / %d total\n\n",
             p->name,
             (i == app->config.active_profile) ? " [ACTIVE]" : "",
             p->study_minutes, p->break_minutes, p->long_break_minutes,
+            p->sessions_until_long_break,
             total_hours, total_minutes,
             p->completed_sessions, p->total_sessions);
         
         strcat_s(profiles_msg, sizeof(profiles_msg), profile_info);
     }
+    
+    strcat_s(profiles_msg, sizeof(profiles_msg), 
+        "\nTo add/edit profiles, modify the configuration file manually.\n"
+        "Full profile editor coming in future updates.");
     
     MessageBoxA(app->main_window, profiles_msg, "Study Profiles", MB_OK | MB_ICONINFORMATION);
 }
@@ -681,42 +667,39 @@ void ottsr_show_profiles_dialog(ottsr_app_t* app) {
 void ottsr_show_about_dialog(ottsr_app_t* app) {
     MessageBoxA(app->main_window,
         "Over The Top Study Reminder v" OTTSR_VERSION "\n\n"
-        "A professional study timer with customizable profiles,\n"
-        "break reminders, and session tracking.\n\n"
-        "Features:\n"
-        "- Multiple study profiles\n"
-        "- Pomodoro technique support\n" 
-        "- Session statistics tracking\n"
-        "- Modern, clean interface\n"
-        "- Configurable notifications\n\n"
+        "A professional study timer application with customizable\n"
+        "profiles, break reminders, and session tracking.\n\n"
+        "Key Features:\n"
+        "• Multiple study profiles with individual settings\n"
+        "• Pomodoro technique support with configurable intervals\n" 
+        "• Session statistics and progress tracking\n"
+        "• Clean, modern user interface\n"
+        "• Configurable audio notifications\n"
+        "• Automatic session management\n"
+        "• Persistent configuration storage\n\n"
         "Credits:\n"
         "Developed by g-flame\n"
-        "GitHub: github.com/g-flame\n\n"
+        "GitHub: https://github.com/g-flame\n\n"
+        "This software is open source and free to use.\n"
         "Copyright 2024 - MIT License",
         "About OTTSR", MB_OK | MB_ICONINFORMATION);
 }
 
 INT_PTR CALLBACK ottsr_settings_dlgproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    // Settings dialog implementation would go here
-    // For now, using simple message boxes
     return FALSE;
 }
 
 INT_PTR CALLBACK ottsr_profiles_dlgproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
-    // Profiles dialog implementation would go here
-    // For now, using simple message boxes  
     return FALSE;
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow) {
-    // Initialize common controls
     INITCOMMONCONTROLSEX icex;
     icex.dwSize = sizeof(INITCOMMONCONTROLSEX);
     icex.dwICC = ICC_PROGRESS_CLASS | ICC_STANDARD_CLASSES;
     InitCommonControlsEx(&icex);
     
     ottsr_init_app(&g_app);
-    ottsr_create_ui_resources(&g_app);
     ottsr_create_main_window(&g_app, hInstance);
     
     ShowWindow(g_app.main_window, nCmdShow);
