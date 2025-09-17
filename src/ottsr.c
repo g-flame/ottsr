@@ -331,27 +331,194 @@ void ottsr_stop_session(ottsr_app_t *app) {
     ottsr_update_display(app);
 }
 
+// Update display with current state
+void ottsr_update_display(ottsr_app_t *app) {
+    ottsr_profile_t *profile = &app->config.profiles[app->session.profile_index];
+    
+    char time_str[32];
+    int display_seconds = profile->study_minutes * 60;
+    
+    // Format time as MM:SS
+    int minutes = display_seconds / 60;
+    int seconds = display_seconds % 60;
+    snprintf(time_str, sizeof(time_str), "%02d:%02d", minutes, seconds);
+    
+    gtk_label_set_text(GTK_LABEL(app->timer_label), time_str);
+    
+    // Update time spinners
+    g_signal_handlers_block_by_func(app->study_time_spin, on_time_changed, app);
+    g_signal_handlers_block_by_func(app->break_time_spin, on_time_changed, app);
+    
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(app->study_time_spin), profile->study_minutes);
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(app->break_time_spin), profile->break_minutes);
+    
+    g_signal_handlers_unblock_by_func(app->study_time_spin, on_time_changed, app);
+    g_signal_handlers_unblock_by_func(app->break_time_spin, on_time_changed, app);
+    
+    // Update stats
+    char stats_str[256];
+    int total_hours = (int)(profile->total_study_time / 3600);
+    int total_minutes = (int)((profile->total_study_time % 3600) / 60);
+    
+    snprintf(stats_str, sizeof(stats_str), 
+             "Total Study Time: %dh %dm | Sessions: %d/%d completed",
+             total_hours, total_minutes, 
+             profile->completed_sessions, profile->total_sessions);
+    
+    gtk_label_set_text(GTK_LABEL(app->stats_label), stats_str);
+}
+
+// Timer callback
+gboolean ottsr_timer_callback(gpointer user_data) {
+    ottsr_app_t *app = (ottsr_app_t *)user_data;
+    ottsr_profile_t *profile = &app->config.profiles[app->session.profile_index];
+    
+    if (app->session.state == OTTSR_STATE_STUDYING) {
+        app->session.elapsed_study_seconds++;
+        
+        if (app->session.elapsed_study_seconds >= profile->study_minutes * 60) {
+            // Study session complete
+            app->session.state = OTTSR_STATE_IDLE;
+            gtk_widget_set_sensitive(app->start_button, TRUE);
+            gtk_widget_set_sensitive(app->pause_button, FALSE);
+            gtk_widget_set_sensitive(app->stop_button, FALSE);
+            gtk_label_set_text(GTK_LABEL(app->status_label), "Study session complete! Take a break.");
+            
+            profile->completed_sessions++;
+            profile->total_study_time += app->session.elapsed_study_seconds;
+            
+            return G_SOURCE_REMOVE; // Stop timer
+        }
+    }
+    
+    return G_SOURCE_CONTINUE;
+}
+
+// UI update callback
+gboolean ottsr_ui_update_callback(gpointer user_data) {
+    ottsr_app_t *app = (ottsr_app_t *)user_data;
+    
+    if (app->session.state == OTTSR_STATE_STUDYING) {
+        ottsr_profile_t *profile = &app->config.profiles[app->session.profile_index];
+        int remaining = (profile->study_minutes * 60) - app->session.elapsed_study_seconds;
+        
+        char time_str[32];
+        int minutes = remaining / 60;
+        int seconds = remaining % 60;
+        snprintf(time_str, sizeof(time_str), "%02d:%02d", minutes, seconds);
+        
+        gtk_label_set_text(GTK_LABEL(app->timer_label), time_str);
+        
+        // Update progress
+        double progress = (double)app->session.elapsed_study_seconds / (profile->study_minutes * 60);
+        gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(app->session_progress), progress);
+    }
+    
+    return G_SOURCE_CONTINUE;
+}
+
+// Callback implementations
+void on_profile_changed(GtkComboBox *combo, ottsr_app_t *app) {
+    if (app->session.state != OTTSR_STATE_IDLE) return;
+    
+    int new_profile = gtk_combo_box_get_active(combo);
+    if (new_profile >= 0 && new_profile < app->config.profile_count) {
+        app->config.active_profile = new_profile;
+        app->session.profile_index = new_profile;
+        ottsr_update_display(app);
+    }
+}
+
+void on_time_changed(GtkSpinButton *spin, ottsr_app_t *app) {
+    if (app->session.state != OTTSR_STATE_IDLE) return;
+    
+    ottsr_profile_t *profile = &app->config.profiles[app->session.profile_index];
+    
+    if (spin == GTK_SPIN_BUTTON(app->study_time_spin)) {
+        profile->study_minutes = gtk_spin_button_get_value_as_int(spin);
+    } else if (spin == GTK_SPIN_BUTTON(app->break_time_spin)) {
+        profile->break_minutes = gtk_spin_button_get_value_as_int(spin);
+    }
+    
+    ottsr_update_display(app);
+}
+
+void on_subject_changed(GtkEntry *entry, ottsr_app_t *app) {
+    const char *text = gtk_entry_get_text(entry);
+    strncpy(app->config.last_subject, text, OTTSR_MAX_NAME_LEN - 1);
+    app->config.last_subject[OTTSR_MAX_NAME_LEN - 1] = '\0';
+}
+
+void on_about_clicked(GtkButton *button, ottsr_app_t *app) {
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->main_window),
+        GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+        "Study Timer Pro v2.0.0\n\nA modern study timer with GTK3\n\nBuilt for productive studying!");
+    
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+}
 // Dummy implementations for unfinished functions
 gboolean ottsr_load_config(ottsr_app_t *app) { return FALSE; }
 gboolean ottsr_save_config(ottsr_app_t *app) { return TRUE; }
-void ottsr_pause_session(ottsr_app_t *app) {}
-void ottsr_update_display(ottsr_app_t *app) {}
-gboolean ottsr_timer_callback(gpointer user_data) { return G_SOURCE_CONTINUE; }
-gboolean ottsr_ui_update_callback(gpointer user_data) { return G_SOURCE_CONTINUE; }
-void ottsr_cleanup_app(ottsr_app_t *app) {}
 
-// Callback implementations
-void on_profile_changed(GtkComboBox *combo, ottsr_app_t *app) {}
+void ottsr_pause_session(ottsr_app_t *app) {
+    if (app->session.state == OTTSR_STATE_IDLE) return;
+    
+    if (app->session.state == OTTSR_STATE_PAUSED) {
+        // Resume
+        app->session.state = OTTSR_STATE_STUDYING;
+        gtk_button_set_label(GTK_BUTTON(app->pause_button), "Pause");
+        gtk_label_set_text(GTK_LABEL(app->status_label), "Studying...");
+    } else {
+        // Pause
+        app->session.state = OTTSR_STATE_PAUSED;
+        gtk_button_set_label(GTK_BUTTON(app->pause_button), "Resume");
+        gtk_label_set_text(GTK_LABEL(app->status_label), "Paused");
+    }
+}
+
+void ottsr_cleanup_app(ottsr_app_t *app) {
+    if (app->session_timer_id > 0) {
+        g_source_remove(app->session_timer_id);
+    }
+    if (app->ui_update_timer_id > 0) {
+        g_source_remove(app->ui_update_timer_id);
+    }
+    
+    if (app->css_provider) {
+        g_object_unref(app->css_provider);
+    }
+}
+
 void on_start_clicked(GtkButton *button, ottsr_app_t *app) { ottsr_start_session(app); }
 void on_pause_clicked(GtkButton *button, ottsr_app_t *app) { ottsr_pause_session(app); }
 void on_stop_clicked(GtkButton *button, ottsr_app_t *app) { ottsr_stop_session(app); }
-void on_time_changed(GtkSpinButton *spin, ottsr_app_t *app) {}
-void on_subject_changed(GtkEntry *entry, ottsr_app_t *app) {}
-void on_settings_clicked(GtkButton *button, ottsr_app_t *app) {}
-void on_profiles_clicked(GtkButton *button, ottsr_app_t *app) {}
-void on_about_clicked(GtkButton *button, ottsr_app_t *app) {}
-void ottsr_create_settings_window(ottsr_app_t *app) {}
-void ottsr_create_profiles_window(ottsr_app_t *app) {}
+
+void on_settings_clicked(GtkButton *button, ottsr_app_t *app) {
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->main_window),
+        GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+        "Settings dialog not implemented yet.\n\nYou can adjust study and break times using the spinners above.");
+    
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+}
+
+void on_profiles_clicked(GtkButton *button, ottsr_app_t *app) {
+    GtkWidget *dialog = gtk_message_dialog_new(GTK_WINDOW(app->main_window),
+        GTK_DIALOG_MODAL, GTK_MESSAGE_INFO, GTK_BUTTONS_OK,
+        "Profile manager not implemented yet.\n\nCurrently using the selected profile from the dropdown.");
+    
+    gtk_dialog_run(GTK_DIALOG(dialog));
+    gtk_widget_destroy(dialog);
+}
+
+void ottsr_create_settings_window(ottsr_app_t *app) {
+    // Stub - not implemented yet
+}
+
+void ottsr_create_profiles_window(ottsr_app_t *app) {
+    // Stub - not implemented yet  
+}
 
 // Main function
 int main(int argc, char *argv[]) {
