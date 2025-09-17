@@ -77,9 +77,9 @@ jobs:
       uses: softprops/action-gh-release@v2
       with:
         tag_name: ${{ github.event.inputs.version || github.ref_name }}
-        name: Study Timer Pro ${{ github.event.inputs.version || github.ref_name }}
+        name: Over The Top Study Remainder ${{ github.event.inputs.version || github.ref_name }}
         body: |
-          ## Study Timer Pro - Windows Release
+          ## Over The Top Study Remainder - Windows Release
           
           Simple GTK-based study timer for Windows.
           
