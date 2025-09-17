@@ -16,8 +16,11 @@ find_package(PkgConfig REQUIRED)
 # Find GTK3
 pkg_check_modules(GTK3 REQUIRED gtk+-3.0>=3.22)
 
-# Find JSON-GLib
+# Find JSON-GLib (try different package names)
 pkg_check_modules(JSON_GLIB REQUIRED json-glib-1.0)
+if(NOT JSON_GLIB_FOUND)
+    pkg_check_modules(JSON_GLIB REQUIRED libjson-glib-1.0)
+endif()
 
 # Find additional libraries
 pkg_check_modules(GLIB REQUIRED glib-2.0)
