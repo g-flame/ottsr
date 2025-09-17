@@ -1,105 +1,187 @@
-name: OTTSR Build & Release
+name: Build and Release OTTSR
 
 on:
-  push:
-    branches:
-      - main           # Auto-build on commits to main
-  workflow_dispatch:    # Manual trigger from Actions tab
+  workflow_dispatch:
     inputs:
-      major:
-        description: 'Major version override'
+      version:
+        description: 'Version tag (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+      release_notes:
+        description: 'Release notes'
         required: false
-        default: ''
-      minor:
-        description: 'Minor version override'
-        required: false
-        default: ''
-      patch:
-        description: 'Patch version override'
-        required: false
-        default: ''
-
-permissions:
-  contents: write
+        default: 'New release of Over The Top Study Reminder'
 
 env:
-  # Default major/minor versions (editable)
-  VERSION_MAJOR: 0
-  VERSION_MINOR: 0
+  PROJECT_NAME: ottsr
+  BUILD_TYPE: Release
 
 jobs:
-  build-and-release:
+  build:
+    name: Build Windows Application
     runs-on: windows-latest
+    
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Set up MSVC environment
-        shell: cmd
-        run: call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-
-      - name: Build OTTSR
-        shell: cmd
-        run: |
-          cl /nologo /O2 /GL /Gy /arch:AVX2 /fp:fast /MD ottsr.c /Fe:ottsr.exe ^
-            user32.lib kernel32.lib shell32.lib winmm.lib opengl32.lib glu32.lib gdi32.lib comctl32.lib psapi.lib /link /LTCG
-
-      - name: Determine version
-        id: version
-        shell: bash
-        run: |
-          # Use manual override if provided
-          major="${{ github.event.inputs.major }}"
-          minor="${{ github.event.inputs.minor }}"
-          patch="${{ github.event.inputs.patch }}"
-
-          # If not provided, get last release and increment patch
-          if [[ -z "$major" || -z "$minor" || -z "$patch" ]]; then
-            last=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || echo "")
-            if [[ $last =~ ([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-              last_major=${BASH_REMATCH[1]}
-              last_minor=${BASH_REMATCH[2]}
-              last_patch=${BASH_REMATCH[3]}
-              major="${major:-$last_major}"
-              minor="${minor:-$last_minor}"
-              patch="${patch:-$((last_patch+1))}"
-            else
-              major="${major:-${{ env.VERSION_MAJOR }}}"
-              minor="${minor:-${{ env.VERSION_MINOR }}}"
-              patch="${patch:-1}"
-            fi
-          fi
-
-          echo "RELEASE_TAG=${major}.${minor}.${patch}" >> $GITHUB_ENV
-          echo "Determined release: $RELEASE_TAG"
-
-      - name: Generate README for release
-        shell: bash
-        run: |
-          cat > README_RELEASE.md <<EOL
-# OTTSR v${{ env.RELEASE_TAG }}
-
-**OTTSR** (Optimized Time-Tracking for Study Routines) release **${{ env.RELEASE_TAG }}**
-
-Early development version – UI may be incomplete.
-
-## Features
-- Pomodoro-style study/break cycles
-- Config file support
-- Native Win32 app, dependency-free
-
-## Build
-Built with MSVC on Windows.
-
-## Installation
-Download **ottsr.exe** from this release and run directly.
-EOL
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ env.RELEASE_TAG }}
-          release_name: "OTTSR v${{ env.RELEASE_TAG }}"
-          files: ottsr.exe,README_RELEASE.md
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup MSVC
+      uses: microsoft/setup-msbuild@v2
+      
+    - name: Setup Visual Studio Build Tools
+      uses: microsoft/setup-msbuild@v2
+      with:
+        msbuild-architecture: x64
+        
+    - name: Create build directory
+      run: mkdir build
+      
+    - name: Compile with cl.exe (Debug)
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cl.exe /Fe:build\ottsr_debug.exe /Zi /Od /MDd src\ottsr.c /link user32.lib gdi32.lib kernel32.lib comctl32.lib winmm.lib
+      shell: cmd
+      
+    - name: Compile with cl.exe (Release)
+      run: |
+        call "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
+        cl.exe /Fe:build\ottsr.exe /O2 /MD /DNDEBUG src\ottsr.c /link user32.lib gdi32.lib kernel32.lib comctl32.lib winmm.lib
+      shell: cmd
+      
+    - name: Create portable package
+      run: |
+        mkdir release
+        copy build\ottsr.exe release\
+        copy README.md release\ 2>nul || echo "README not found, skipping"
+        copy LICENSE release\ 2>nul || echo "LICENSE not found, skipping"
+        echo. > release\ottsr.conf
+        echo # Over The Top Study Reminder Configuration > release\ottsr.conf
+        echo # This file will be populated automatically on first run >> release\ottsr.conf
+      shell: cmd
+      
+    - name: Create installer package
+      run: |
+        mkdir installer
+        copy build\ottsr.exe installer\
+        copy README.md installer\ 2>nul || echo "README not found, skipping"
+        copy LICENSE installer\ 2>nul || echo "LICENSE not found, skipping"
+        powershell -Command "Compress-Archive -Path 'installer\*' -DestinationPath 'ottsr-${{ github.event.inputs.version }}-installer.zip'"
+        
+    - name: Create portable package zip
+      run: |
+        powershell -Command "Compress-Archive -Path 'release\*' -DestinationPath 'ottsr-${{ github.event.inputs.version }}-portable.zip'"
+        
+    - name: Calculate file hashes
+      run: |
+        powershell -Command "Get-FileHash ottsr-${{ github.event.inputs.version }}-portable.zip -Algorithm SHA256 | Select-Object Hash | Format-Table -HideTableHeaders" > portable-sha256.txt
+        powershell -Command "Get-FileHash ottsr-${{ github.event.inputs.version }}-installer.zip -Algorithm SHA256 | Select-Object Hash | Format-Table -HideTableHeaders" > installer-sha256.txt
+        
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ottsr-build-${{ github.event.inputs.version }}
+        path: |
+          ottsr-${{ github.event.inputs.version }}-portable.zip
+          ottsr-${{ github.event.inputs.version }}-installer.zip
+          portable-sha256.txt
+          installer-sha256.txt
+          build/ottsr_debug.exe
+          
+  create-release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Download build artifacts
+      uses: actions/download-artifact@v4
+      with:
+        name: ottsr-build-${{ github.event.inputs.version }}
+        
+    - name: Read hash files
+      id: hashes
+      run: |
+        echo "portable_hash=$(cat portable-sha256.txt | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        echo "installer_hash=$(cat installer-sha256.txt | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        
+    - name: Generate changelog
+      id: changelog
+      run: |
+        CHANGELOG=$(cat << 'EOF'
+        ## 🎯 Over The Top Study Reminder ${{ github.event.inputs.version }}
+        
+        ### 📥 Downloads
+        - **Portable Version**: `ottsr-${{ github.event.inputs.version }}-portable.zip`
+        - **Installer Package**: `ottsr-${{ github.event.inputs.version }}-installer.zip`
+        
+        ### ✨ Features
+        - Professional study timer with Pomodoro technique support
+        - Multiple customizable study profiles
+        - Session progress tracking and statistics
+        - Audio notifications and break reminders
+        - Clean, modern user interface
+        - Persistent configuration storage
+        
+        ### 🔧 Installation
+        **Portable Version:**
+        1. Download and extract `ottsr-${{ github.event.inputs.version }}-portable.zip`
+        2. Run `ottsr.exe`
+        3. Configuration will be saved in the same directory
+        
+        **From Source:**
+        ```bash
+        git clone https://github.com/${{ github.repository }}
+        cd ottsr
+        # Compile with Visual Studio or MinGW
+        cl.exe /Fe:ottsr.exe src/ottsr.c /link user32.lib gdi32.lib kernel32.lib comctl32.lib winmm.lib
+        ```
+        
+        ### 📋 System Requirements
+        - Windows 7 or later
+        - No additional dependencies required
+        
+        ### 🔐 File Verification
+        **SHA256 Checksums:**
+        - Portable: `${{ steps.hashes.outputs.portable_hash }}`
+        - Installer: `${{ steps.hashes.outputs.installer_hash }}`
+        
+        ### 📝 Release Notes
+        ${{ github.event.inputs.release_notes }}
+        
+        ### 🐛 Known Issues
+        - Settings and profile management currently require manual configuration file editing
+        - Advanced dialog interfaces will be added in future releases
+        
+        ---
+        **Full Changelog**: https://github.com/${{ github.repository }}/compare/${{ github.event.inputs.version }}...HEAD
+        EOF
+        )
+        echo "content<<EOF" >> $GITHUB_OUTPUT
+        echo "$CHANGELOG" >> $GITHUB_OUTPUT
+        echo "EOF" >> $GITHUB_OUTPUT
+        
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        tag_name: ${{ github.event.inputs.version }}
+        name: "OTTSR ${{ github.event.inputs.version }}"
+        body: ${{ steps.changelog.outputs.content }}
+        draft: false
+        prerelease: false
+        files: |
+          ottsr-${{ github.event.inputs.version }}-portable.zip
+          ottsr-${{ github.event.inputs.version }}-installer.zip
+          ottsr_debug.exe
+        generate_release_notes: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Update latest release info
+      run: |
+        echo "Release ${{ github.event.inputs.version }} created successfully!"
+        echo "Download URLs:"
+        echo "- Portable: https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.version }}/ottsr-${{ github.event.inputs.version }}-portable.zip"
+        echo "- Installer: https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.version }}/ottsr-${{ github.event.inputs.version }}-installer.zip"
