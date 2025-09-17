@@ -8,13 +8,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+#pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "gdi32.lib")
+#pragma comment(lib, "kernel32.lib")
+#pragma comment(lib, "winmm.lib")
+
 // Application Constants
 #define OTTSR_VERSION "1.0.0"
 #define OTTSR_CONFIG_FILE "ottsr.conf"
 #define OTTSR_MAX_PROFILES 20
-#define OTTSR_MAX_SUBJECTS 50
 #define OTTSR_MAX_NAME_LEN 128
-#define OTTSR_MAX_PATH_LEN 512
 
 // UI Control IDs
 #define IDC_PROFILE_COMBO       2001
@@ -33,6 +37,7 @@
 #define IDC_STATUS_DISPLAY      2014
 
 // Settings Dialog IDs
+#define IDD_SETTINGS            3000
 #define IDC_SOUND_CHECK         3001
 #define IDC_NOTIFICATIONS_CHECK 3002
 #define IDC_MINIMIZE_CHECK      3003
@@ -42,30 +47,33 @@
 #define IDC_SAVE_SETTINGS       3007
 #define IDC_RESET_SETTINGS      3008
 
-// Profile Dialog IDs
+// Profile Dialog IDs  
+#define IDD_PROFILES            4000
 #define IDC_PROFILE_LIST        4001
 #define IDC_PROFILE_NAME_EDIT   4002
 #define IDC_ADD_PROFILE         4003
 #define IDC_DELETE_PROFILE      4004
-#define IDC_SET_DEFAULT         4005
+#define IDC_EDIT_PROFILE        4005
+#define IDC_PROFILE_STUDY_EDIT  4006
+#define IDC_PROFILE_BREAK_EDIT  4007
+#define IDC_PROFILE_LONGBREAK_EDIT 4008
+#define IDC_PROFILE_SESSIONS_EDIT  4009
 
 // Timer IDs
 #define TIMER_SESSION           1
 #define TIMER_BREAK            2
 #define TIMER_UI_UPDATE        3
 
-// Colors for modern UI
-#define OTTSR_COLOR_PRIMARY     RGB(59, 130, 246)
-#define OTTSR_COLOR_SECONDARY   RGB(107, 114, 128)
-#define OTTSR_COLOR_SUCCESS     RGB(34, 197, 94)
-#define OTTSR_COLOR_WARNING     RGB(245, 158, 11)
-#define OTTSR_COLOR_ERROR       RGB(239, 68, 68)
-#define OTTSR_COLOR_BG_LIGHT    RGB(249, 250, 251)
-#define OTTSR_COLOR_BG_DARK     RGB(17, 24, 39)
-#define OTTSR_COLOR_CARD_LIGHT  RGB(255, 255, 255)
-#define OTTSR_COLOR_CARD_DARK   RGB(31, 41, 55)
-#define OTTSR_COLOR_TEXT_LIGHT  RGB(17, 24, 39)
-#define OTTSR_COLOR_TEXT_DARK   RGB(243, 244, 246)
+// Colors
+#define COLOR_PRIMARY     RGB(59, 130, 246)
+#define COLOR_SECONDARY   RGB(107, 114, 128)
+#define COLOR_SUCCESS     RGB(34, 197, 94)
+#define COLOR_WARNING     RGB(245, 158, 11)
+#define COLOR_ERROR       RGB(239, 68, 68)
+#define COLOR_BG_LIGHT    RGB(249, 250, 251)
+#define COLOR_BG_DARK     RGB(17, 24, 39)
+#define COLOR_CARD_LIGHT  RGB(255, 255, 255)
+#define COLOR_CARD_DARK   RGB(31, 41, 55)
 
 // Enums
 typedef enum {
@@ -105,8 +113,6 @@ typedef struct {
     int sound_volume;
     int window_x;
     int window_y;
-    int window_width;
-    int window_height;
     char last_subject[OTTSR_MAX_NAME_LEN];
 } ottsr_config_t;
 
@@ -147,7 +153,6 @@ typedef struct {
     HBRUSH bg_brush;
     HBRUSH card_brush;
     HBRUSH primary_brush;
-    HPEN border_pen;
     
     // State
     ottsr_config_t config;
@@ -161,8 +166,6 @@ void ottsr_cleanup_app(ottsr_app_t* app);
 void ottsr_load_config(ottsr_app_t* app);
 void ottsr_save_config(ottsr_app_t* app);
 void ottsr_create_main_window(ottsr_app_t* app, HINSTANCE hInstance);
-void ottsr_create_ui_resources(ottsr_app_t* app);
-void ottsr_update_ui_theme(ottsr_app_t* app);
 void ottsr_start_session(ottsr_app_t* app);
 void ottsr_stop_session(ottsr_app_t* app);
 void ottsr_pause_session(ottsr_app_t* app);
@@ -174,12 +177,7 @@ void ottsr_show_about_dialog(ottsr_app_t* app);
 LRESULT CALLBACK ottsr_main_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK ottsr_settings_dlgproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK ottsr_profiles_dlgproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-// Utility functions
 void ottsr_format_time(int seconds, char* buffer, size_t buffer_size);
 void ottsr_play_notification_sound(ottsr_app_t* app);
-void ottsr_show_notification(const char* title, const char* message);
-COLORREF ottsr_get_theme_color(ottsr_app_t* app, const char* color_name);
-void ottsr_draw_rounded_rect(HDC hdc, RECT* rect, int radius, HBRUSH brush, HPEN pen);
 
 #endif // OTTSR_H
