@@ -36,17 +36,9 @@ A modern, cross-platform study timer application with customizable profiles, des
 
 ### Download
 
-**Linux:**
-- [AppImage](releases/latest) (Universal, recommended)
-- [.deb package](releases/latest) (Debian/Ubuntu)  
-- [.rpm package](releases/latest) (Fedora/RHEL)
-
 **Windows:**
 - [Installer](releases/latest) (Recommended)
 - [Portable version](releases/latest)
-
-**macOS:**
-- [.dmg installer](releases/latest)
 
 ### First Run
 
@@ -60,18 +52,6 @@ The app will guide you through study sessions and breaks with notifications.
 ## 🛠️ Building from Source
 
 ### Prerequisites
-
-**Linux/macOS:**
-```bash
-# Ubuntu/Debian
-sudo apt install build-essential cmake pkg-config libgtk-3-dev libjson-glib-1.0-dev
-
-# Fedora
-sudo dnf install gcc cmake pkg-config gtk3-devel json-glib-devel
-
-# macOS (with Homebrew)
-brew install cmake pkg-config gtk+3 json-glib
-```
 
 **Windows (MSYS2):**
 ```bash
@@ -113,28 +93,12 @@ make format
 make clean-all
 ```
 
-## 📁 Project Structure
-
-```
-ottsr/
-├── src/
-│   ├── ottsr.h          # Header with all declarations
-│   └── ottsr.c          # Main implementation
-├── data/
-│   ├── ottsr.desktop    # Linux desktop entry
-│   ├── ottsr.png        # Application icon
-│   └── ottsr.1          # Man page
-├── docs/                # Documentation
-├── CMakeLists.txt       # Build configuration
-└── .github/workflows/   # CI/CD pipelines
-```
 
 ## ⚙️ Configuration
 
 Settings are stored in JSON format at:
 - **Linux**: `~/.config/ottsr/settings.json`
 - **Windows**: `%APPDATA%/ottsr/settings.json`  
-- **macOS**: `~/Library/Application Support/ottsr/settings.json`
 
 ### Example Configuration
 
@@ -223,36 +187,7 @@ We welcome contributions! Here's how to get started:
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
 
-- **Original concept** by g-flame
-- **GTK rewrite** modernized by Claude AI
-- **Icons** from the [Feather](https://feathericons.com/) icon set
-- **Inspiration** from the Pomodoro Technique® by Francesco Cirillo
-
-## 📚 Changelog
-
-### v2.0.0 (Current)
-- 🎉 Complete rewrite with GTK3
-- ✨ Cross-platform support (Linux, Windows, macOS)
-- 🎨 Modern gradient UI with animations
-- 📱 Multiple pre-built study profiles
-- 🔔 Native desktop notifications
-- 📊 Enhanced statistics tracking
-- ⚙️ JSON configuration system
-- 🏗️ Professional CMake build system
-
-### v1.0.0 (Legacy)
-- Windows-only Win32 application
-- Basic timer functionality
-- Simple configuration file
-- Limited customization options
-
----
-
-**Made with ❤️ for productive studying**
-
-[⬆️ Back to top](#study-timer-pro-ottsr-)
 
 <!-- Badges -->
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
