@@ -1,79 +1,46 @@
 #ifndef OTTSR_H
 #define OTTSR_H
 
-#include <windows.h>
-#include <commctrl.h>
-#include <stdio.h>
+#include <gtk/gtk.h>
+#include <glib.h>
+#include <json-glib/json-glib.h>
 #include <time.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#pragma comment(lib, "comctl32.lib")
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "kernel32.lib")
-#pragma comment(lib, "winmm.lib")
+#include <unistd.h>
+#include <sys/stat.h>
 
 // Application Constants
-#define OTTSR_VERSION "1.0.0"
-#define OTTSR_CONFIG_FILE "ottsr.conf"
+#define OTTSR_VERSION "2.0.0"
+#define OTTSR_CONFIG_DIR ".config/ottsr"
+#define OTTSR_CONFIG_FILE "settings.json"
 #define OTTSR_MAX_PROFILES 20
 #define OTTSR_MAX_NAME_LEN 128
+#define OTTSR_WINDOW_WIDTH 480
+#define OTTSR_WINDOW_HEIGHT 720
 
-// UI Control IDs
-#define IDC_PROFILE_COMBO       2001
-#define IDC_SUBJECT_EDIT        2002
-#define IDC_STUDY_TIME_EDIT     2003
-#define IDC_BREAK_TIME_EDIT     2004
-#define IDC_START_BTN           2005
-#define IDC_STOP_BTN            2006
-#define IDC_PAUSE_BTN           2007
-#define IDC_SETTINGS_BTN        2008
-#define IDC_PROFILES_BTN        2009
-#define IDC_ABOUT_BTN           2010
-#define IDC_SESSION_PROGRESS    2011
-#define IDC_BREAK_PROGRESS      2012
-#define IDC_TIME_DISPLAY        2013
-#define IDC_STATUS_DISPLAY      2014
-
-// Settings Dialog IDs
-#define IDD_SETTINGS            3000
-#define IDC_SOUND_CHECK         3001
-#define IDC_NOTIFICATIONS_CHECK 3002
-#define IDC_MINIMIZE_CHECK      3003
-#define IDC_AUTOSTART_CHECK     3004
-#define IDC_VOLUME_SLIDER       3005
-#define IDC_THEME_COMBO         3006
-#define IDC_SAVE_SETTINGS       3007
-#define IDC_RESET_SETTINGS      3008
-
-// Profile Dialog IDs  
-#define IDD_PROFILES            4000
-#define IDC_PROFILE_LIST        4001
-#define IDC_PROFILE_NAME_EDIT   4002
-#define IDC_ADD_PROFILE         4003
-#define IDC_DELETE_PROFILE      4004
-#define IDC_EDIT_PROFILE        4005
-#define IDC_PROFILE_STUDY_EDIT  4006
-#define IDC_PROFILE_BREAK_EDIT  4007
-#define IDC_PROFILE_LONGBREAK_EDIT 4008
-#define IDC_PROFILE_SESSIONS_EDIT  4009
-
-// Timer IDs
-#define TIMER_SESSION           1
-#define TIMER_BREAK            2
-#define TIMER_UI_UPDATE        3
-
-// Colors
-#define COLOR_PRIMARY     RGB(59, 130, 246)
-#define COLOR_SECONDARY   RGB(107, 114, 128)
-#define COLOR_SUCCESS     RGB(34, 197, 94)
-#define COLOR_WARNING     RGB(245, 158, 11)
-#define COLOR_ERROR       RGB(239, 68, 68)
-#define COLOR_BG_LIGHT    RGB(249, 250, 251)
-#define COLOR_BG_DARK     RGB(17, 24, 39)
-#define COLOR_CARD_LIGHT  RGB(255, 255, 255)
-#define COLOR_CARD_DARK   RGB(31, 41, 55)
+// CSS for modern styling
+#define OTTSR_CSS_STYLE \
+"window { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }" \
+".main-container { background: rgba(255, 255, 255, 0.95); border-radius: 20px; " \
+"                  margin: 20px; padding: 30px; box-shadow: 0 20px 40px rgba(0,0,0,0.1); }" \
+".timer-display { font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace; " \
+"                 font-size: 48px; font-weight: bold; color: #2c3e50; " \
+"                 text-shadow: 0 2px 4px rgba(0,0,0,0.1); }" \
+".status-label { font-size: 18px; color: #7f8c8d; margin: 10px 0; }" \
+".profile-combo { padding: 12px; border-radius: 8px; font-size: 14px; }" \
+".control-button { padding: 12px 24px; border-radius: 25px; font-weight: 600; " \
+"                  font-size: 14px; transition: all 0.3s ease; }" \
+".start-button { background: linear-gradient(45deg, #27ae60, #2ecc71); color: white; border: none; }" \
+".start-button:hover { background: linear-gradient(45deg, #229954, #27ae60); transform: translateY(-2px); }" \
+".pause-button { background: linear-gradient(45deg, #f39c12, #e67e22); color: white; border: none; }" \
+".pause-button:hover { background: linear-gradient(45deg, #e67e22, #d35400); transform: translateY(-2px); }" \
+".stop-button { background: linear-gradient(45deg, #e74c3c, #c0392b); color: white; border: none; }" \
+".stop-button:hover { background: linear-gradient(45deg, #c0392b, #a93226); transform: translateY(-2px); }" \
+".progress-bar { border-radius: 10px; }" \
+".progress-bar progress { background: linear-gradient(90deg, #667eea, #764ba2); }" \
+".settings-entry { padding: 8px 12px; border-radius: 6px; margin: 5px 0; }"
 
 // Enums
 typedef enum {
@@ -96,8 +63,8 @@ typedef struct {
     int break_minutes;
     int long_break_minutes;
     int sessions_until_long_break;
-    int sound_enabled;
-    int notifications_enabled;
+    gboolean sound_enabled;
+    gboolean notifications_enabled;
     time_t total_study_time;
     int total_sessions;
     int completed_sessions;
@@ -108,11 +75,11 @@ typedef struct {
     int profile_count;
     int active_profile;
     ottsr_theme_t theme;
-    int minimize_to_tray;
-    int autostart_sessions;
+    gboolean minimize_to_tray;
+    gboolean autostart_sessions;
     int sound_volume;
-    int window_x;
-    int window_y;
+    int window_width;
+    int window_height;
     char last_subject[OTTSR_MAX_NAME_LEN];
 } ottsr_config_t;
 
@@ -129,55 +96,93 @@ typedef struct {
 } ottsr_session_t;
 
 typedef struct {
-    HWND main_window;
-    HWND settings_dialog;
-    HWND profiles_dialog;
+    GtkApplication *app;
+    GtkWidget *main_window;
+    GtkWidget *settings_window;
+    GtkWidget *profiles_window;
     
-    // Main window controls
-    HWND profile_combo;
-    HWND subject_edit;
-    HWND study_time_edit;
-    HWND break_time_edit;
-    HWND start_btn;
-    HWND stop_btn;
-    HWND pause_btn;
-    HWND session_progress;
-    HWND break_progress;
-    HWND time_display;
-    HWND status_display;
+    // Main window widgets
+    GtkWidget *profile_combo;
+    GtkWidget *subject_entry;
+    GtkWidget *study_time_spin;
+    GtkWidget *break_time_spin;
+    GtkWidget *start_button;
+    GtkWidget *pause_button;
+    GtkWidget *stop_button;
+    GtkWidget *timer_label;
+    GtkWidget *status_label;
+    GtkWidget *session_progress;
+    GtkWidget *break_progress;
+    GtkWidget *stats_label;
     
-    // UI Resources
-    HFONT title_font;
-    HFONT normal_font;
-    HFONT mono_font;
-    HBRUSH bg_brush;
-    HBRUSH card_brush;
-    HBRUSH primary_brush;
+    // Settings widgets
+    GtkWidget *theme_combo;
+    GtkWidget *volume_scale;
+    GtkWidget *sound_check;
+    GtkWidget *notifications_check;
+    GtkWidget *minimize_check;
+    GtkWidget *autostart_check;
+    
+    // Profile widgets
+    GtkWidget *profile_list;
+    GtkWidget *profile_name_entry;
+    GtkWidget *profile_study_spin;
+    GtkWidget *profile_break_spin;
+    GtkWidget *profile_longbreak_spin;
+    GtkWidget *profile_sessions_spin;
+    
+    // Timers
+    guint session_timer_id;
+    guint ui_update_timer_id;
     
     // State
     ottsr_config_t config;
     ottsr_session_t session;
-    int is_dark_theme;
+    
+    // Styling
+    GtkCssProvider *css_provider;
 } ottsr_app_t;
 
 // Function declarations
-void ottsr_init_app(ottsr_app_t* app);
-void ottsr_cleanup_app(ottsr_app_t* app);
-void ottsr_load_config(ottsr_app_t* app);
-void ottsr_save_config(ottsr_app_t* app);
-void ottsr_create_main_window(ottsr_app_t* app, HINSTANCE hInstance);
-void ottsr_start_session(ottsr_app_t* app);
-void ottsr_stop_session(ottsr_app_t* app);
-void ottsr_pause_session(ottsr_app_t* app);
-void ottsr_update_display(ottsr_app_t* app);
-void ottsr_handle_timer(ottsr_app_t* app, WPARAM timer_id);
-void ottsr_show_settings_dialog(ottsr_app_t* app);
-void ottsr_show_profiles_dialog(ottsr_app_t* app);
-void ottsr_show_about_dialog(ottsr_app_t* app);
-LRESULT CALLBACK ottsr_main_wndproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK ottsr_settings_dlgproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-INT_PTR CALLBACK ottsr_profiles_dlgproc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-void ottsr_format_time(int seconds, char* buffer, size_t buffer_size);
-void ottsr_play_notification_sound(ottsr_app_t* app);
+void ottsr_init_app(ottsr_app_t *app);
+void ottsr_cleanup_app(ottsr_app_t *app);
+gboolean ottsr_load_config(ottsr_app_t *app);
+gboolean ottsr_save_config(ottsr_app_t *app);
+void ottsr_create_main_window(ottsr_app_t *app);
+void ottsr_create_settings_window(ottsr_app_t *app);
+void ottsr_create_profiles_window(ottsr_app_t *app);
+void ottsr_start_session(ottsr_app_t *app);
+void ottsr_stop_session(ottsr_app_t *app);
+void ottsr_pause_session(ottsr_app_t *app);
+void ottsr_update_display(ottsr_app_t *app);
+gboolean ottsr_timer_callback(gpointer user_data);
+gboolean ottsr_ui_update_callback(gpointer user_data);
+void ottsr_show_notification(ottsr_app_t *app, const char *title, const char *message);
+void ottsr_play_notification_sound(ottsr_app_t *app);
+void ottsr_format_time(int seconds, char *buffer, size_t buffer_size);
+void ottsr_format_stats(ottsr_app_t *app, char *buffer, size_t buffer_size);
+char* ottsr_get_config_path(void);
+
+// Callback declarations
+void on_profile_changed(GtkComboBox *combo, ottsr_app_t *app);
+void on_start_clicked(GtkButton *button, ottsr_app_t *app);
+void on_pause_clicked(GtkButton *button, ottsr_app_t *app);
+void on_stop_clicked(GtkButton *button, ottsr_app_t *app);
+void on_settings_clicked(GtkButton *button, ottsr_app_t *app);
+void on_profiles_clicked(GtkButton *button, ottsr_app_t *app);
+void on_about_clicked(GtkButton *button, ottsr_app_t *app);
+void on_time_changed(GtkSpinButton *spin, ottsr_app_t *app);
+void on_subject_changed(GtkEntry *entry, ottsr_app_t *app);
+
+// Settings callbacks
+void on_settings_save_clicked(GtkButton *button, ottsr_app_t *app);
+void on_settings_cancel_clicked(GtkButton *button, ottsr_app_t *app);
+
+// Profile callbacks
+void on_profile_add_clicked(GtkButton *button, ottsr_app_t *app);
+void on_profile_delete_clicked(GtkButton *button, ottsr_app_t *app);
+void on_profile_save_clicked(GtkButton *button, ottsr_app_t *app);
+void on_profile_cancel_clicked(GtkButton *button, ottsr_app_t *app);
+void on_profile_list_changed(GtkListBox *list, GtkListBoxRow *row, ottsr_app_t *app);
 
 #endif // OTTSR_H
